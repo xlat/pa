@@ -447,7 +447,10 @@ sub which{
 		say $entry->[1];
 		$count++;
 		if($wilcard){
-			say "\t\t", $_ for @matches;
+			for(@matches){
+				s!/!\\!g;
+				say "\t\t", $_;
+			}
 		}
 	}
 	say "file not found!" unless $count;
