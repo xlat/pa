@@ -14,7 +14,7 @@ INSTALLATION
 USAGE
 
 	pa --help --verbose
-or pa -vh
+	or pa -vh
 	
 REQUIREMENTS
 	
@@ -31,6 +31,4 @@ REQUIREMENTS
 		
 BUGS 
 
-	Report any bug and features enhancemant at 
-	
-	*github.com/xlat/pa*
+	Report any bug and features enhancemant at https://github.com/xlat/pa/issues
