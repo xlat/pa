@@ -1,0 +1,36 @@
+AUTHOR
+
+	xlat@cpan.org (Nicolas Georges)
+
+LICENSE
+
+	Same as Perl itself (see Perl Artistic License)
+
+
+INSTALLATION
+
+	Copy pa.cmd and pa.pl in a folder that is in your PATH
+	
+USAGE
+
+	pa --help --verbose
+or pa -vh
+	
+REQUIREMENTS
+	
+	Perl >= 5.10.1
+	The following packages and their dependencies must be installed:
+		Getopt::Long::Descriptive
+		File::Glob
+		File::Basename
+		Win32
+		Win32API::Registry
+		constant
+		strict
+		warnings
+		
+BUGS 
+
+	Report any bug and features enhancemant at 
+	
+	*github.com/xlat/pa*

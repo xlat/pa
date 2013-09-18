@@ -1,0 +1,20 @@
+	pa : display a readable PATH variable
+	pa --check : check for duplicated, bad paths and size limitation
+	pa --edit : interactively edit path order and entries.
+	pa --enable/disable entry : additional entries managment
+	pa --useconf confname : works with the confname configuration
+	pa --addconf confname : merge current config with confname
+	pa --optimize : can reduce path size by removing duplicated entries, 
+			use short path name, 
+			remove double-quotes, 
+			use ENV vars if shorten : does not work! 
+
+	pa --backup|B : backup current PATH into a special file/subfolder
+		based on localtime, and restorable easily with 
+			./pa/backups/2013-10-02-14h42m21s.cmd
+	pa --restore|R ?
+	
+	* which without extension should look in PATHEXT
+	* extend which command to look at registry HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths
+		so it can read more path when an app is existing as a sub key?
+	* when called with no commands (-X or --xx), it will act as PATH command.
