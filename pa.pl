@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 =pod SYNOPSIS
 
-	A perl script designed to be make PATH managment easier (on win32 plateforms).
+	A perl script designed to make PATH managment easier (on win32 plateforms).
 
 =cut
 use 5.10.1;
