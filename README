@@ -16,6 +16,62 @@ USAGE
 	pa --help --verbose
 	or pa -vh
 	
+	Version: 0.01
+
+	Usage: pa.pl [-AabcdhlSstVvw] [long options...]
+			-t --top         add/move given path(s) to the top of the PATH
+			-b --bottom      add/move given path(s) to the bottom of the PATH
+			-a --add         alias for --bottom
+			-d --delete      remove given path(s) from the PATH
+			-s --show        display PATH entries (default when no arguments)
+			-S --sort        sort entries alphanumericaly and append a real order
+							 column
+			-w --which       find a file in all path entries (wilcard allowed)
+
+			--saveconf       save current path under an configuration name
+			--loadconf       load configuration by name
+			--delconf        delete configuration by name
+			-l --listconf    display available configurations (try with --verbose)
+
+			-v --verbose     make output more verbose
+			-c --check       check path
+			-A --about       output information about program
+			-V --version     output version information
+			-h --help        print full usage message and exit (try with
+							 --verbose)
+
+	Entries can be specified by
+		path        e.g.: --top c:\dev\perl\bin
+		:index      e.g.: --top :-1 --bottom :42
+		:index..n   e.g.: --top :4..8
+		/regex/     e.g.: --top /perl/
+		!/regex/    e.g.: --top !/perl/     (negate matches)
+
+	Usages:
+		To move last entry on the top and display what was done:
+			pa --top :-1 --verbose
+		or  pa -vt:-1f
+		To delete entries of indexed between 4 and 8:
+			pa --delete :4..8
+		or  pa -d:4..8
+		To show 4 last entries:
+			pa --show :-1..-4
+		To move at the bottom all entries that match regex /python/ :
+			pa --bottom /python/
+		To list available configurations with there content:
+			pa --listconf --verbose
+		To save current PATH into configuration 'conf1'
+			pa --saveconf conf1
+		To load configuration 'conf1'
+			pa --loadconf conf1
+		To delete configuration 'conf1'
+			pa --delconf conf1
+		To find all perl dll in path:
+			pa --which perl*.dll
+		or  pa -wperl*.dll
+		To check for path entries
+			pa --check
+	
 REQUIREMENTS
 	
 	Perl >= 5.10.1
