@@ -217,7 +217,7 @@ sub check_path{
         unless(-d $pa->[1]){
             my $m = exists $machine{$pa->[2]} ? 'M' : '-';
             my $u = exists    $user{$pa->[2]} ? 'U' : '-';
-            say "\tEntry does not exists: $m$u ", $pa->[0] ,") ", $pa->[1];
+            say "\tEntry does not exists: $m$u $pa->[0]) '$pa->[1]'";
         }
     }
     
@@ -282,8 +282,9 @@ sub expand_meta{
 sub mk_uniq{
     my $pa = shift;
     my $new_pa = Win32::ExpandEnvironmentStrings( $pa );
-    $new_pa =~ s/"|\\$//g;
+    $new_pa =~ s/"//g;
     $new_pa =~ s{/|\\{2,}}{\\}g;
+    $new_pa =~ s/\\$//g;
     $new_pa = lc Win32::GetFullPathName( $new_pa );
     say "mk_uniq('$pa') => '$new_pa'" if DEBUG;
     return $new_pa;
