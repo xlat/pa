@@ -12,9 +12,9 @@ use File::Glob qw( bsd_glob );
 use Getopt::Long::Descriptive;
 use Win32;
 use Win32API::Registry qw(:ALL);
-our $VERSION = 0.01;
+our $VERSION = 0.02;
 use constant DEBUG => 0;
-
+use experimental 'smartmatch';
 my ($opt, $usage);
 my @path;
 #A copy of initial @path array in order to retrieve original indexed path entries
@@ -109,7 +109,7 @@ sub initialize{
         [ 'listconf|l',  "display available configurations (try with --verbose)"],              
         [],               
         [ 'verbose|v',   "make output more verbose" ],
-        [ 'check|c',   "check path" ],
+        [ 'check|c',     "check path" ],
         [ 'about|A',     "output information about program" ],
         [ 'version|V',   "output version information" ],
         [ 'help|h',      "print full usage message and exit (try with --verbose)" ],
@@ -215,7 +215,9 @@ sub check_path{
     foreach my $palist ( values %uniq ){
         my $pa = $palist->[0];
         unless(-d $pa->[1]){
-            say "\tEntry does not exists: ", $pa->[0] ,") ", $pa->[1];
+            my $m = exists $machine{$pa->[2]} ? 'M' : '-';
+            my $u = exists    $user{$pa->[2]} ? 'U' : '-';
+            say "\tEntry does not exists: $m$u ", $pa->[0] ,") ", $pa->[1];
         }
     }
     
@@ -229,7 +231,9 @@ sub check_path{
         foreach my $key ( keys %uniq ){
             say "\tPointing to $key:";
             foreach my $pa ( @{$uniq{$key}} ){
-                say "\t\t", $pa->[0],") ", $pa->[1];
+                my $m = exists $machine{$pa->[2]} ? 'M' : '-';
+                my $u = exists    $user{$pa->[2]} ? 'U' : '-';
+                say "\t\t$m$u ", $pa->[0],") ", $pa->[1];
             }
         }
     }
@@ -243,9 +247,9 @@ sub expand_meta{
     my @entries;
     if($pa =~ /^:(-?\d+)(?:\.\.(-?\d+))?$/){
         my ($index, $index2) = ($1, $2);
-        $index -- unless $index < 1;
         $index2 //= $index;
         $index2 -- unless $index2 < 1;
+        $index -- unless $index < 1;
         #check for array ranges (and accept negativ numbers which is perlish :-))
         ($index,$index2)=($index2,$index) if $index > $index2;
         foreach my $i ($index..$index2){
@@ -277,15 +281,13 @@ sub expand_meta{
 
 sub mk_uniq{
     my $pa = shift;
-    say "mk_uniq('$pa')" if DEBUG;
-    $pa = Win32::ExpandEnvironmentStrings( $pa );
-    $pa =~ s/"|\\$//g;
-    $pa = Win32::GetFullPathName( $pa );
-    $pa = lc $pa;
-    say " => '$pa'" if DEBUG;
-    return $pa;
+    my $new_pa = Win32::ExpandEnvironmentStrings( $pa );
+    $new_pa =~ s/"|\\$//g;
+    $new_pa =~ s{/|\\{2,}}{\\}g;
+    $new_pa = lc Win32::GetFullPathName( $new_pa );
+    say "mk_uniq('$pa') => '$new_pa'" if DEBUG;
+    return $new_pa;
 }
-
 
 
 #Sort entries
@@ -314,14 +316,13 @@ sub display_path{
 }
 
 sub extract_entries{
-    my %entries;
-    my @entries;
-    foreach my $entry ( map{ expand_meta $_ } @_ ){
-        push @entries, $entry;
-        $entries{$entry->[2]} ++;
+    my @byIndex;
+    my @entries = map{ expand_meta $_ } @_;
+    foreach my $entry ( @entries ){
+        $byIndex[ $entry->[0] ]=1;
     }
     #remove entries to be extracted
-    @path = grep{ !exists $entries{ $_->[2] } } @path;
+    @path = grep { not $byIndex[ $_->[0] ] } @path;
     return @entries;
 }
 
@@ -357,7 +358,7 @@ sub bottom{
 }
 
 sub _delete{
-    #remove entries wich match with given path in $opt->bottom and put a new entry at the bottom
+    #remove entries wich match with given path in $opt->delete
     my @entries = extract_entries( @{ $opt->delete } );
     #print verbose info if required
     if($opt->verbose){
@@ -411,7 +412,9 @@ sub readconf{
 }
 
 sub listconf{
+    my $configs = 0;
     foreach my $conf ( sort ( bsd_glob( "$THIS_PATH/configs/*" ) ) ){
+        $configs++;
         my $confname = basename( $conf );
         say "[$confname]";
         if($opt->verbose){
@@ -427,6 +430,7 @@ sub listconf{
             }
         }
     }
+    say "no configurations." unless $configs;
 }
 
 sub loadconf{
