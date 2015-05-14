@@ -43,7 +43,12 @@ sub main{
         check_path();
         $cmd++;
     }
-    
+
+    if($opt->optimize){
+        optimize();
+        $save++;
+    }
+
     if($opt->top){
         top();
         $save++;
@@ -108,8 +113,10 @@ sub initialize{
         [ 'delconf=s',   "delete configuration by name"],              
         [ 'listconf|l',  "display available configurations (try with --verbose)"],              
         [],               
+        [ 'long|L',      "display long path name" ],
         [ 'verbose|v',   "make output more verbose" ],
         [ 'check|c',     "check path" ],
+        [ 'optimize|o',  "optimize path (remove duplicate, inexistant and shorten paths)" ],
         [ 'about|A',     "output information about program" ],
         [ 'version|V',   "output version information" ],
         [ 'help|h',      "print full usage message and exit (try with --verbose)" ],
@@ -202,7 +209,17 @@ ADDITIONAL
     exit;
 }
 
+sub dump_path{
+    my $pa = shift;
+    my $size = length scalar @path; #how many chars needed to write last index ?
+    my $m = exists $machine{$pa->[2]} ? 'M' : '-';
+    my $u = exists    $user{$pa->[2]} ? 'U' : '-';
+    my $path = $opt->long ? Win32::GetLongPathName( $pa->[1] )//$pa->[1] : $pa->[1];
+    return sprintf "%s%s %*i) %s", $m, $u, $size, $pa->[0], $path;
+}
+
 sub check_path{
+    my $msg = 0;
     #check for duplicates
     my %uniq;
     my $i = 1;
@@ -218,6 +235,7 @@ sub check_path{
             my $m = exists $machine{$pa->[2]} ? 'M' : '-';
             my $u = exists    $user{$pa->[2]} ? 'U' : '-';
             say "\tEntry does not exists: $m$u $pa->[0]) '$pa->[1]'";
+            $msg++;
         }
     }
     
@@ -227,16 +245,17 @@ sub check_path{
     }
     
     if(keys %uniq){
+        $msg++;
         say "Duplicated entries:";
         foreach my $key ( keys %uniq ){
             say "\tPointing to $key:";
             foreach my $pa ( @{$uniq{$key}} ){
-                my $m = exists $machine{$pa->[2]} ? 'M' : '-';
-                my $u = exists    $user{$pa->[2]} ? 'U' : '-';
-                say "\t\t$m$u ", $pa->[0],") ", $pa->[1];
+                say "\t\t", dump_path($pa);
             }
         }
     }
+    
+    say "Nothing strange in your path." unless $msg;
 }
 
 # look for meta characters that allows to match multiple entries at once
@@ -258,13 +277,14 @@ sub expand_meta{
     }
     elsif($pa =~ /^:?(!?)\/(.*)\/$/){
         my ($type, $pattern) = ($1, $2);
-        #todo: scan for regexs and append matching entries from @ori_path
+        #scan for regexs and append matching entries from @ori_path
+        ENTRY:
         foreach my $pa ( @ori_path ){
             if($type eq ''){
-                next unless $pa->[1] =~ /$pattern/i;
+                next ENTRY unless $pa->[1] =~ /$pattern/i or $pa->[2] =~ /$pattern/i;
             }
             else{
-                next unless $pa->[1] !~ /$pattern/i;
+                next ENTRY unless $pa->[1] !~ /$pattern/i and $pa->[2] !~ /$pattern/i;
             }
             push @entries, $pa;
         }
@@ -285,11 +305,12 @@ sub mk_uniq{
     $new_pa =~ s/"//g;
     $new_pa =~ s{/|\\{2,}}{\\}g;
     $new_pa =~ s/\\$//g;
-    $new_pa = lc Win32::GetFullPathName( $new_pa );
+    $new_pa = Win32::GetLongPathName( $new_pa ) // $new_pa;
+    $new_pa = Win32::GetFullPathName( $new_pa ) // $new_pa;
+    $new_pa = lc $new_pa;
     say "mk_uniq('$pa') => '$new_pa'" if DEBUG;
     return $new_pa;
 }
-
 
 #Sort entries
 sub sentries{ lc $a->[1] cmp lc $b->[1] }
@@ -308,10 +329,7 @@ sub display_path{
     @entries = sort sentries @entries if $opt->sort;
         
     foreach my $pa ( @entries ){
-        my $m = exists $machine{$pa->[2]} ? 'M' : '-';
-        my $u = exists    $user{$pa->[2]} ? 'U' : '-';
-        printf "%s%s %*i) ", $m, $u, $size, $pa->[0];
-        say $pa->[1];
+        say dump_path( $pa );
     }
     say "You have $count path entries" if $opt->verbose;
 }
@@ -363,9 +381,7 @@ sub _delete{
     my @entries = extract_entries( @{ $opt->delete } );
     #print verbose info if required
     if($opt->verbose){
-        foreach my $entry( @entries ){
-            say "deleting: $entry->[1]";
-        }
+        say "deleting: ", dump_path($_) for @entries;
     }
     #rebuild indexes for sorted operation
     rebuild_entries();
@@ -475,22 +491,19 @@ sub which{
     #allow wilcard search with bsd_glob( ) in place of -e
     my @entries = @path;
     @entries    = sort sentries @entries if $opt->sort;
-    my $size    = length scalar @path;
     my $count   = 0;
     my $wilcard = $file =~ /[?*]/;
+    ENTRY:
     foreach my $entry ( @entries ){
         my @matches=();
         if($wilcard){
             @matches = bsd_glob( $entry->[1].'/'.$file );
-            next unless @matches;
+            next ENTRY unless @matches;
         }
         else{
-            next unless -e $entry->[1].'/'.$file;
+            next ENTRY unless -e $entry->[1].'/'.$file;
         }
-        my $m = exists $machine{$entry->[2]} ? 'M' : '-';
-        my $u = exists    $user{$entry->[2]} ? 'U' : '-';
-        printf "\t%s%s %*i) ", $m, $u, $size, $entry->[0];
-        say $entry->[1];
+        say dump_path( $entry );
         $count++;
         if($wilcard){
             for(@matches){
@@ -500,4 +513,34 @@ sub which{
         }
     }
     say "file not found!" unless $count;
+}
+
+
+sub optimize{
+    #remove duplicate and inexistant paths
+    my %uniq;
+    #~ @pa = grep { -e $_->[2] and !$uniq{$_->[2]}++ } @pa;
+    my @new_pa;
+    PATH:
+    for(@path){
+        unless(-e $_->[1]){
+            say "remove inexistant path: ", dump_path($_) if $opt->verbose;
+            next PATH;
+        }
+        if($uniq{$_->[2]}++){
+            say "remove duplacted entry: ", dump_path($_) if $opt->verbose;
+            next PATH;
+        }
+        push @new_pa, $_;
+    }
+    @path = @new_pa;
+    #reduce path size using Win32::GetShortPathName( $pa )
+    $_->[1] = Win32::GetShortPathName( $_->[1] ) for @path;
+    my $before = length $ENV{PATH};
+    my $after = length join ';', map{ $_->[1] } @path;
+    my $delta = ($before - $after);
+    say "$delta chars saved." if $delta>1;
+    say "1 char saved." if $delta==1;
+    say "No chars saved." if $delta==0;
+    say "Sorry I have wasted ",abs($delta)," chars: please report an issue." if $delta<0;    
 }
