@@ -293,8 +293,7 @@ sub expand_meta{
         #@ori_path or @path ?
         #Should use an optional arg to switch array ?
         my $pa_uq = mk_uniq($pa);
-        push @entries, grep { $_->[2] eq $pa_uq } @path; 
-        push @entries, [ 0, $pa, $pa_uq ] unless @entries;
+        push @entries, grep { $_->[1] eq $pa_uq or $_->[2] eq $pa_uq } @path; 
     }
     return @entries;
 }
