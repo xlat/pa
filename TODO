@@ -1,4 +1,8 @@
-	pa : display a readable PATH variable
+pa : display a readable PATH variable
+	rewrite entries using a blessed ary, and replace 
+		->[0] by ->index,
+		->[1] by ->original_path, 
+		->[2] by ->normalized_path,
 	pa --check : check for duplicated, bad paths and size limitation
 	pa --edit : interactively edit path order and entries.
 	pa --enable/disable entry : additional entries managment

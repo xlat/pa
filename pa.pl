@@ -12,7 +12,7 @@ use File::Glob qw( bsd_glob );
 use Getopt::Long::Descriptive;
 use Win32;
 use Win32API::Registry qw(:ALL);
-our $VERSION = 0.02;
+our $VERSION = 0.03;
 use constant DEBUG => 0;
 use experimental 'smartmatch';
 my ($opt, $usage);
@@ -388,9 +388,7 @@ sub _delete{
 
 sub rebuild_entries{
     my $i = 1;
-    foreach my $pa( @path ){
-        $pa->[0] = $i++;
-    }
+    $_->[0] = $i++ for @path;
 }
 
 sub save_path{
@@ -412,7 +410,7 @@ sub setenv{
 sub get_script_path{
     my $path=__FILE__;
     $path =~ s!\\!/!g;
-    $path =~ s!//!/!g;
+    $path =~ s!/{2,}!/!g;
     $path =~ s!/[^/]*$!!;
     return $path;
 }
@@ -439,10 +437,7 @@ sub listconf{
             @entries = sort sentries @entries if $opt->sort;
             my $size = length scalar @entries;
             foreach my $entry ( @entries ){
-                my $m = exists $machine{$entry->[2]} ? 'M' : '-';
-                my $u = exists    $user{$entry->[2]} ? 'U' : '-';
-                printf "%s%s %*i) ", $m, $u, $size, $entry->[0];
-                say $entry->[1];
+                say dump_path($entry);
             }
         }
     }
@@ -455,7 +450,6 @@ sub loadconf{
     #set @path
     @path = readconf( $file );
     #rebuild path
-    #~ rebuild_entries();
     save_path();
     say "Configuration '",$opt->loadconf,"' loaded." if $opt->verbose;	
 }
@@ -494,19 +488,28 @@ sub which{
     my $wilcard = $file =~ /[?*]/;
     ENTRY:
     foreach my $entry ( @entries ){
+        my $path = $entry->[1];
+        $path =~ s/^"(.*)"$/$1/;#remove surrounding quottes
+        $path =~ s![/\\]+$!!;#remove trailing path separator
         my @matches=();
         if($wilcard){
-            @matches = bsd_glob( $entry->[1].'/'.$file );
+            @matches = bsd_glob( $path.'/'.$file );
             next ENTRY unless @matches;
         }
         else{
-            next ENTRY unless -e $entry->[1].'/'.$file;
+            next ENTRY unless -e $path.'/'.$file;
         }
         say dump_path( $entry );
         $count++;
         if($wilcard){
             for(@matches){
                 s!/!\\!g;
+                s!\\{2,}!\\!g;
+                s!\\$!!g;
+                if($opt->long){
+                    $_ = Win32::GetLongPathName($_) // $_;
+                    $_ = Win32::GetFullPathName($_) // $_;
+                }
                 say "\t\t", $_;
             }
         }
