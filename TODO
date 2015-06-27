@@ -3,22 +3,45 @@ pa : display a readable PATH variable
 		->[0] by ->index,
 		->[1] by ->original_path, 
 		->[2] by ->normalized_path,
-	pa --check : check for duplicated, bad paths and size limitation
+		->[3] by ->origin (origin: U, M, <empty>)
++	pa --origin=user|machine : 
+		for new added entries , its will specify origin (current env by default), (emit a warn if --update is not specified)
 	pa --edit : interactively edit path order and entries.
 	pa --enable/disable entry : additional entries managment
-	pa --useconf confname : works with the confname configuration
-	pa --addconf confname : merge current config with confname
+	pa --mergeconf confname : merge current config with confname : 
 	pa --optimize : can reduce path size by removing duplicated entries, 
 			use short path name, 
 			remove double-quotes, 
-			use ENV vars if shorten : does not work! 
+			use ENV vars if shorten : does not work because of PATH REG_SZ nature (TODO: try to change to REG_EXPAND_SZ) 
 
+	save path configuration [for current session only?]
+	pa --push
+	pa --pop 
+	
 	pa --backup|B : backup current PATH into a special file/subfolder
 		based on localtime, and restorable easily with 
 			./pa/backups/2013-10-02-14h42m21s.cmd
 	pa --restore|R ?
 	
-	* which without extension should look in PATHEXT
+	* which should works with /regex/, but must not allowed regex in a parent path...
+		/perl\.e.*/
+		/bin/perl\.e.*/
+	
 	* extend which command to look at registry HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths
 		so it can read more path when an app is existing as a sub key?
 	* when called with no commands (-X or --xx), it will act as PATH command.
+
+	* configuration can store :
+		- ORIGIN so registry can be restored too if -u + --loadconf
+		- PATHEXT
+		- (and possiblity other ENV variable can be stored)
+	
+	* have a preference file for pa, so it can always perform a backup of ENV+REG
+	
+Hack:
+
+	try to modify Path type from REG_SZ to REG_EXPAND_SZ, and so We could make other optimisations/hacks
+	eg:
+		%PF => "c:\Program Files"
+		%PFx => "c:\Program Files (x86)"
+		

@@ -12,7 +12,7 @@ use File::Glob qw( bsd_glob );
 use Getopt::Long::Descriptive;
 use Win32;
 use Win32API::Registry qw(:ALL);
-our $VERSION = 0.03;
+our $VERSION = 0.04;
 use constant DEBUG => 0;
 use experimental 'smartmatch';
 my ($opt, $usage);
@@ -518,28 +518,37 @@ sub saveconf{
 sub which{
     my $file = $opt->which;
     #TODO: add --useconf confname to work with a configuration
-    #TODO: if not extension look for PATHEXT or allow wilcard
-    #allow wilcard search with bsd_glob( ) in place of -e
     my @entries = @path;
     @entries    = sort sentries @entries if $opt->sort;
     my $count   = 0;
+    my $with_exts = 0;
     my $wilcard = $file =~ /[?*]/;
+    my $has_ext = $file =~ /\.[^\/\\]*$/;
+    my $exts = $ENV{PATHEXT}//'';
+    $exts =~ s{;}{|}g;
     ENTRY:
     foreach my $entry ( @entries ){
         my $path = $entry->[1];
         $path =~ s/^"(.*)"$/$1/;#remove surrounding quottes
         $path =~ s![/\\]+$!!;#remove trailing path separator
         my @matches=();
-        if($wilcard){
-            @matches = bsd_glob( $path.'/'.$file );
-            next ENTRY unless @matches;
+        my $glob_pattern = $path.'/'.$file;
+        $glob_pattern .= '.*' unless $has_ext;
+        if($wilcard or !$has_ext){
+            @matches = bsd_glob( $glob_pattern );
         }
         else{
-            next ENTRY unless -e $path.'/'.$file;
+            @matches = $path.'/'.$file if -e $path.'/'.$file;
         }
+        unless($has_ext){
+            @matches = grep {/$exts$/io} @matches;
+            $with_exts = @matches;
+            push @matches, $path.'/'.$file if -e $path.'/'.$file;
+        }
+        next ENTRY unless @matches;
         say dump_path( $entry );
         $count++;
-        if($wilcard){
+        if($wilcard or $with_exts){
             for(@matches){
                 s!/!\\!g;
                 s!\\{2,}!\\!g;
