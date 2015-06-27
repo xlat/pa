@@ -25,6 +25,7 @@ my @MACHINE_PATH;   #read from registry
 my @USER_PATH;      #
 my %machine;
 my %user;
+my ($original_machine_path, $original_user_path);
 
 main();
 #-----------------------------------------------------------------------------------------------
@@ -107,6 +108,7 @@ sub initialize{
         [ 'show|s:s@',   "display PATH entries (default when no arguments)"],
         [ 'sort|S',      "sort entries alphanumericaly and append a real order column"],
         [ 'which|w=s',   "find a file in all path entries (wilcard allowed)"],
+        [ 'update|u',  "update registry (USER, MACHINE)" ],
         [],         
         [ 'saveconf=s',  "save current path under an configuration name"],              
         [ 'loadconf=s',  "load configuration by name"],              
@@ -125,17 +127,16 @@ sub initialize{
     @path     = split_path( $ENV{PATH} );
     @ori_path = split_path( $ENV{PATH} );
 
-    my ($machine_path, $user_path);
     my ($key,$type);
     RegOpenKeyEx( HKEY_LOCAL_MACHINE, 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment', 0, KEY_READ, $key );
-    RegQueryValueEx( $key, "Path", [], $type, $machine_path, [] );
+    RegQueryValueEx( $key, "Path", [], $type, $original_machine_path, [] );
     RegCloseKey( $key );
     RegOpenKeyEx( HKEY_CURRENT_USER, 'Environment', 0, KEY_READ, $key );
-    RegQueryValueEx( $key, "PATH", [], $type, $user_path, [] );
+    RegQueryValueEx( $key, "PATH", [], $type, $original_user_path, [] );
     RegCloseKey( $key );
     
-    @MACHINE_PATH = split_path( $machine_path );
-    @USER_PATH    = split_path( $user_path    );
+    @MACHINE_PATH = split_path( $original_machine_path );
+    @USER_PATH    = split_path( $original_user_path    );
     %machine      = map { $_->[2], $_} @MACHINE_PATH;
     %user         = map { $_->[2], $_} @USER_PATH;
 
@@ -394,17 +395,54 @@ sub rebuild_entries{
 sub save_path{
     my $path = join ';', map{ $_->[1] } @path;
     setenv( 'PATH', $path );
+    if($opt->update){
+        #rebuild USER and MACHINE paths then update registry keys
+        my $user_path    = join ';', map{ $_->[1] } grep{ exists    $user{$_->[2]}    } @path;
+        my $machine_path = join ';', map{ $_->[1] } grep{ exists    $machine{$_->[2]} } @path;
+        my $key;
+        my $type = REG_SZ;
+        if($original_user_path ne $user_path){
+            if(RegOpenKeyEx( HKEY_CURRENT_USER, 
+                            'Environment', 0, KEY_SET_VALUE, $key )){
+                RegSetValueEx( $key, "Path", 0, $type, $user_path ) 
+                    or say "* ERROR setting USER registry PATH: $^E";
+                say "USER registry path updated." if $opt->verbose;
+                RegCloseKey( $key );
+            }
+            else{
+                say STDERR "USER path not updated: $^E";
+            }
+        }
+        
+        if($original_machine_path ne $machine_path){
+            if(RegOpenKeyEx( HKEY_LOCAL_MACHINE, 
+                            'SYSTEM\CurrentControlSet\Control\Session Manager\Environment', 0, KEY_SET_VALUE, $key )){
+                RegSetValueEx( $key, "PATH", 0, $type, $machine_path ) 
+                    or say "* ERROR setting MACHINE registry PATH: $^E";
+                say "MACHINE registry path updated." ;
+                RegCloseKey( $key );
+            }
+            else{
+                say STDERR "MACHINE path not updated: $^E";
+            }
+        }
+    }
 }
 
 sub setenv{
     my ($name, $value) = @_;
-    my $filename = $ENV{PA_SHARED_CMD};
-    open my $FH, '>', $filename or die "Could not open $filename for writting!";
-    #TODO/maybe: enquote ^ and % in $value ?
-    print $FH 'SET ', $name, '=', $value, "\n";
-    print $FH "echo $name has been modified\n";
-    close $FH;
-    say "** PA_SHARED_CMD = '$filename' **" if DEBUG;
+    if(($ENV{$name}//'') ne $value){
+        my $filename = $ENV{PA_SHARED_CMD};
+        open my $FH, '>', $filename or die "Could not open $filename for writting!";
+        #TODO/maybe: enquote ^ and % in $value ?
+        say $FH 'SET ', $name, '=', $value;
+        say $FH "echo $name has been modified";
+        close $FH;
+        say "** PA_SHARED_CMD = '$filename' **" if DEBUG;
+    }
+    else{
+        say "$name was not modified." if $opt->verbose;
+    }
 }
 
 sub get_script_path{
