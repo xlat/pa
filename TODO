@@ -4,6 +4,7 @@ pa : display a readable PATH variable
 		->[1] by ->original_path, 
 		->[2] by ->normalized_path,
 		->[3] by ->origin (origin: U, M, <empty>)
+		->[4] by ->disbled (state) 
 +	pa --origin=user|machine : 
 		for new added entries , its will specify origin (current env by default), (emit a warn if --update is not specified)
 	pa --edit : interactively edit path order and entries.

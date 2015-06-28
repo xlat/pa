@@ -7,14 +7,17 @@
 use 5.10.1;
 use strict;
 use warnings;
+use experimental 'smartmatch';
 use File::Basename;
+use Cwd qw(abs_path);
 use File::Glob qw( bsd_glob );
 use Getopt::Long::Descriptive;
 use Win32;
 use Win32API::Registry qw(:ALL);
-our $VERSION = 0.04;
+our $VERSION = 0.05;
+our $FORMAT_VERSION = 1;
 use constant DEBUG => 0;
-use experimental 'smartmatch';
+
 my ($opt, $usage);
 my @path;
 #A copy of initial @path array in order to retrieve original indexed path entries
@@ -76,10 +79,16 @@ sub main{
     }
     
     if($opt->loadconf){
-        loadconf();
+        loadconf( $opt->loadconf );
         $save++;
     }
-    
+
+    if($opt->showconf){
+        loadconf( $opt->showconf );
+        display_path( );
+        $cmd++;
+    }
+
     if($opt->delconf){
         delconf();
         $cmd++;
@@ -98,7 +107,7 @@ sub main{
 
 sub initialize{
     $THIS_PATH = get_script_path();
-    
+    say "\$THIS_PATH='$THIS_PATH'" if DEBUG;
     ($opt, $usage) = do{ describe_options(
         'Usage: %c %o',
         [ 'top|t=s@',    "add/move given path(s) to the top of the PATH" ],
@@ -108,12 +117,13 @@ sub initialize{
         [ 'show|s:s@',   "display PATH entries (default when no arguments)"],
         [ 'sort|S',      "sort entries alphanumericaly and append a real order column"],
         [ 'which|w=s',   "find a file in all path entries (wilcard allowed)"],
-        [ 'update|u',  "update registry (USER, MACHINE)" ],
+        [ 'update|u',    "update registry (USER, MACHINE)" ],
         [],         
         [ 'saveconf=s',  "save current path under an configuration name"],              
         [ 'loadconf=s',  "load configuration by name"],              
         [ 'delconf=s',   "delete configuration by name"],              
-        [ 'listconf|l',  "display available configurations (try with --verbose)"],              
+        [ 'listconf|l',  "display available configurations (try with --verbose)"],
+        [ 'showconf=s',  "show configuration but does not apply it"],
         [],               
         [ 'long|L',      "display long path name" ],
         [ 'verbose|v',   "make output more verbose" ],
@@ -124,9 +134,6 @@ sub initialize{
         [ 'help|h',      "print full usage message and exit (try with --verbose)" ],
     ) };
     
-    @path     = split_path( $ENV{PATH} );
-    @ori_path = split_path( $ENV{PATH} );
-
     my ($key,$type);
     RegOpenKeyEx( HKEY_LOCAL_MACHINE, 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment', 0, KEY_READ, $key );
     RegQueryValueEx( $key, "Path", [], $type, $original_machine_path, [] );
@@ -140,6 +147,9 @@ sub initialize{
     %machine      = map { $_->[2], $_} @MACHINE_PATH;
     %user         = map { $_->[2], $_} @USER_PATH;
 
+    @path     = split_path( $ENV{PATH} );
+    @ori_path = split_path( $ENV{PATH} );
+
 }
 
 sub split_path{
@@ -148,7 +158,11 @@ sub split_path{
     my @local_path;
     foreach my $pa ( split ';', $flat_path ){
         my $key = mk_uniq( $pa );
-        push @local_path, [ $order, $pa, $key ];
+        my $entry = [ $order, $pa, $key, '--' ];
+        my $origin = (is_machine( $entry ) ? 'M' : '-') . 
+                     (is_user( $entry ) ? 'U' : '-');
+        $entry->[3] = $origin;
+        push @local_path, $entry;
         $order ++;
     }
     return @local_path;
@@ -210,11 +224,33 @@ ADDITIONAL
     exit;
 }
 
+sub is_user{ 
+    my $pa = shift;
+    if(ref($pa) eq 'ARRAY'){
+        $pa = $pa->[2];
+    }
+    else{
+        $pa = mk_uniq($pa);
+    }
+    exists $user{$pa} 
+}
+
+sub is_machine{ 
+    my $pa = shift;
+    if(ref($pa) eq 'ARRAY'){
+        $pa = $pa->[2];
+    }
+    else{
+        $pa = mk_uniq($pa);
+    }
+    exists $machine{$pa} 
+}
+
 sub dump_path{
     my $pa = shift;
     my $size = length scalar @path; #how many chars needed to write last index ?
-    my $m = exists $machine{$pa->[2]} ? 'M' : '-';
-    my $u = exists    $user{$pa->[2]} ? 'U' : '-';
+    my $m = substr( $pa->[3], 0, 1 );
+    my $u = substr( $pa->[3], 1, 1 );
     my $path = $opt->long ? Win32::GetLongPathName( $pa->[1] )//$pa->[1] : $pa->[1];
     return sprintf "%s%s %*i) %s", $m, $u, $size, $pa->[0], $path;
 }
@@ -233,8 +269,8 @@ sub check_path{
     foreach my $palist ( values %uniq ){
         my $pa = $palist->[0];
         unless(-d $pa->[1]){
-            my $m = exists $machine{$pa->[2]} ? 'M' : '-';
-            my $u = exists    $user{$pa->[2]} ? 'U' : '-';
+            my $m = is_machine($pa) ? 'M' : '-';
+            my $u = is_user($pa)    ? 'U' : '-';
             say "\tEntry does not exists: $m$u $pa->[0]) '$pa->[1]'";
             $msg++;
         }
@@ -308,7 +344,7 @@ sub mk_uniq{
     $new_pa = Win32::GetLongPathName( $new_pa ) // $new_pa;
     $new_pa = Win32::GetFullPathName( $new_pa ) // $new_pa;
     $new_pa = lc $new_pa;
-    say "mk_uniq('$pa') => '$new_pa'" if DEBUG;
+    say "mk_uniq('$pa') => '$new_pa'" if DEBUG > 1;
     return $new_pa;
 }
 
@@ -397,8 +433,8 @@ sub save_path{
     setenv( 'PATH', $path );
     if($opt->update){
         #rebuild USER and MACHINE paths then update registry keys
-        my $user_path    = join ';', map{ $_->[1] } grep{ exists    $user{$_->[2]}    } @path;
-        my $machine_path = join ';', map{ $_->[1] } grep{ exists    $machine{$_->[2]} } @path;
+        my $user_path    = join ';', map{ $_->[1] } grep{ is_user($_)    } @path;
+        my $machine_path = join ';', map{ $_->[1] } grep{ is_machine($_) } @path;
         my $key;
         my $type = REG_SZ;
         if($original_user_path ne $user_path){
@@ -446,7 +482,7 @@ sub setenv{
 }
 
 sub get_script_path{
-    my $path=__FILE__;
+    my $path= abs_path( __FILE__ );
     $path =~ s!\\!/!g;
     $path =~ s!/{2,}!/!g;
     $path =~ s!/[^/]*$!!;
@@ -457,8 +493,40 @@ sub readconf{
     my $file = shift;
     open my $FH, '<', $file or die "Could not load configuration '$file' : $!";
     my $index = 1;
-    #TODO: make processing of disabled columns ?
-    my @entries = map { chomp; [ $index++, $_, mk_uniq($_) ] } <$FH>;
+    my @entries = <$FH>;
+    my $format=0;
+    if(@entries and $entries[0] =~ /^#format-version: (.*)/){
+        $format = $1;
+    }
+    #filter commented lines/header
+    @entries = grep{!/^#/} @entries;
+    if($format==0){
+        @entries = map{ 
+            chomp;
+            [ 
+                $index++, 
+                $_, 
+                mk_uniq($_),
+                (is_machine($_) ? 'M' : '-') .
+                (is_user($_)    ? 'U' : '-')
+            ];
+        } @entries;
+    }
+    elsif($format==1){
+        @entries = map{
+            chomp;
+            my @entry = split /;/;
+            [
+                $index++,
+                $entry[0],
+                mk_uniq($entry[0]),
+                $entry[1]||''
+            ];
+        } @entries;
+    }
+    else{
+        die "$file: unknow format version $format";
+    }
     close $FH;
     return @entries;
 }
@@ -473,7 +541,6 @@ sub listconf{
             my @entries = readconf( $conf );
             #Take in account "--sort" option
             @entries = sort sentries @entries if $opt->sort;
-            my $size = length scalar @entries;
             foreach my $entry ( @entries ){
                 say dump_path($entry);
             }
@@ -483,13 +550,12 @@ sub listconf{
 }
 
 sub loadconf{
-    my $file = "$THIS_PATH/configs/" . $opt->loadconf;
-    die "No configuration '", $opt->loadconf, "!'" unless -e $file;
+    my $conf = shift;
+    my $file = "$THIS_PATH/configs/" . $conf;
+    die "No configuration '", $conf, "!'" unless -e $file;
     #set @path
     @path = readconf( $file );
-    #rebuild path
-    save_path();
-    say "Configuration '",$opt->loadconf,"' loaded." if $opt->verbose;	
+    say "Configuration '",$conf,"' loaded." if $opt->verbose;	
 }
 
 sub delconf{
@@ -507,10 +573,13 @@ sub saveconf{
     my $file = "$THIS_PATH/configs/" . $opt->saveconf;
     #write path entries to file
     open my $FH, '>', $file or die "Could not write to file '$file' : $!";
+    say $FH "#format-version: $FORMAT_VERSION";
     foreach my $pa ( @path ){
         #TODO: append a disabled column with * when disabled
         #~ say $FH $pa->[3], "\t", $pa->[1]; 
-        say $FH $pa->[1]; 
+        say $FH join ";", 
+            $pa->[1], 
+            (is_machine($pa)?'M':'-') . (is_user($pa)?'U':'-');
     }
     close $FH;
     say "Configuration '",$opt->saveconf,"' saved." if $opt->verbose;
