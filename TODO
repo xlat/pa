@@ -38,6 +38,9 @@ pa : display a readable PATH variable
 		- (and possiblity other ENV variable can be stored)
 	
 	* have a preference file for pa, so it can always perform a backup of ENV+REG
+
+	* have a mode to start a command from a specific config (or over all): pa --config=all scite
+		This could be useful to not pollute all our path for a simple command x nb-single-command; this could really save our path :-p
 	
 Hack:
 
@@ -45,4 +48,9 @@ Hack:
 	eg:
 		%PF => "c:\Program Files"
 		%PFx => "c:\Program Files (x86)"
-		
+	
+	remove deps to Win32::Reg* by using `reg query "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path`
+	may possible to daignose that Machine Registry is not matching current PATH settings (not the same entries)
+	or that the registry value is too big.
+
+	It could be a good exercice to rewrite "pa" in perl6 !

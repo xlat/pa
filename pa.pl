@@ -14,7 +14,7 @@ use File::Glob qw( bsd_glob );
 use Getopt::Long::Descriptive;
 use Win32;
 use Win32API::Registry qw(:ALL);
-our $VERSION = 0.05;
+our $VERSION = 0.06;
 our $FORMAT_VERSION = 1;
 use constant DEBUG => 0;
 
@@ -169,12 +169,15 @@ sub split_path{
 }
 
 sub about{
-    say "$0 is an utility that help to manage PATH entries from command line.";
+    say "$0 is an utility that help to manage PATH entries from command line on windows.";
+    say "Author: Nicolas Georges";
+    say "License: Perl Artistic License";
     say "";
 }
     
 sub version{
     say "Version: $VERSION";
+    say "Format version: $FORMAT_VERSION";
     say "";
 }
 
@@ -299,7 +302,7 @@ sub check_path{
 # such as regex or index range.
 # always works with @ori_path
 sub expand_meta{
-    my $pa = shift;
+    my ($pa, $append) = @_;
     my @entries;
     if($pa =~ /^:(-?\d+)(?:\.\.(-?\d+))?$/){
         my ($index, $index2) = ($1, $2);
@@ -330,7 +333,10 @@ sub expand_meta{
         #@ori_path or @path ?
         #Should use an optional arg to switch array ?
         my $pa_uq = mk_uniq($pa);
-        push @entries, grep { $_->[1] eq $pa_uq or $_->[2] eq $pa_uq } @path; 
+        push @entries, grep { $_->[1] eq $pa_uq or $_->[2] eq $pa_uq } @path;
+        if(!@entries && $append){
+            @entries = split_path $pa;
+        }
     }
     return @entries;
 }
@@ -381,9 +387,20 @@ sub extract_entries{
     return @entries;
 }
 
+sub extract_or_append_entries{
+    my @byIndex;
+    my @entries = map{ expand_meta $_, 1 } @_;
+    foreach my $entry ( @entries ){
+        $byIndex[ $entry->[0] ]=1;
+    }
+    #remove entries to be extracted
+    @path = grep { not $byIndex[ $_->[0] ] } @path;
+    return @entries;
+}
+
 sub top{
     #remove entries wich match with given path in $opt->top and put a new entry at the top
-    my @entries = extract_entries( @{ $opt->top } );
+    my @entries = extract_or_append_entries( @{ $opt->top } );
     #print verbose info if required
     if($opt->verbose){
         foreach my $entry( @entries ){
@@ -398,8 +415,8 @@ sub top{
 
 sub bottom{
     #remove entries wich match with given path in $opt->bottom and put a new entry at the bottom
-    my @entries = extract_entries( 	@{ $opt->bottom // [] }, 
-                                    @{ $opt->add // []    } );
+    my @entries = extract_or_append_entries( 	@{ $opt->bottom // [] }, 
+                                                @{ $opt->add // []    } );
     #print verbose info if required
     if($opt->verbose){
         foreach my $entry( @entries ){
